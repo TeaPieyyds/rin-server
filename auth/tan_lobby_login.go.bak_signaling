@@ -1,0 +1,171 @@
+package auth
+
+import (
+	"context"
+	cryptoRand "crypto/rand"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Yeah114/g79client"
+	"github.com/Yeah114/g79client/utils"
+)
+
+func TanLobbyLogin(ctx context.Context, cli *g79client.Client, p TanLobbyLoginParams) (TanLobbyLoginResult, error) {
+	var result TanLobbyLoginResult
+
+	// 房间号预处理：剥离 @ / # 前缀
+	roomID := strings.TrimSpace(p.RoomID)
+	roomID = strings.TrimPrefix(roomID, "@")
+	roomID = strings.TrimPrefix(roomID, "#")
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
+		return result, fmt.Errorf("TanLobbyLogin: 房间号为空")
+	}
+	// 1. 查询房间详情（按 room_id）
+	roomInfo, err := cli.GetOnlineLobbyRoom(roomID)
+	if err != nil || roomInfo.Code != 0 {
+		// 兜底：用关键词搜索（支持短号→真ID）
+		var searchErr string
+		if sr, sErr := cli.SearchOnlineLobbyRoomByKeyword(roomID, 20, 0); sErr == nil && sr != nil && sr.Code == 0 && len(sr.Entities) > 0 {
+			// 取第一个结果的 entity_id / room_id 作为真 ID
+			for _, e := range sr.Entities {
+				if e.RoomName == roomID || e.RoomID.String() == roomID || e.EntityID.String() == roomID {
+					realID := e.ID()
+					if realID != "" {
+						roomID = realID
+					}
+					break
+				}
+			}
+			if len(sr.Entities) > 0 {
+				realID := sr.Entities[0].ID()
+				if realID != "" {
+					roomID = realID
+				}
+			}
+		} else {
+			if sErr != nil {
+				searchErr = sErr.Error()
+			} else if sr != nil {
+				searchErr = fmt.Sprintf("code=%d msg=%s", sr.Code, sr.Message)
+			}
+		}
+		roomInfo, err = cli.GetOnlineLobbyRoom(roomID)
+		if err != nil {
+			return result, fmt.Errorf("TanLobbyLogin: GetOnlineLobbyRoom(搜后): %w", err)
+		}
+		if roomInfo.Code != 0 {
+			return result, fmt.Errorf("TanLobbyLogin: 无法找到房间(短号=%s 搜后ID=%s)(code=%d) searchErr=%s", p.RoomID, roomID, roomInfo.Code, searchErr)
+		}
+	}
+	room := roomInfo.Entity
+
+
+	if cli.UserDetail == nil {
+		if detail, err := cli.GetUserDetail(); err == nil {
+			cli.UserDetail = &detail.Entity
+		}
+	}
+
+	// 2. 进入房间
+	// 说明：网易对 /online-lobby-room-enter/ 有"快速匹配过于频繁"(code=12022)限流，
+	// 按账号累计计数，短时间多次调用会把配额打满。因此：
+	//   - 不连打：每次重试前 sleep，避免自打限流；
+	//   - 仅在明确可重试的错误(501 需购买 / 12022 快速匹配过频)时才重试；
+	//   - 其余错误立即返回，不做无谓重试。
+	resID := room.ResID.String()
+	enterOK := false
+	var lastEnterMsg string
+	var lastEnterCode int
+	const maxEnterAttempts = 2
+	for attempt := 1; attempt <= maxEnterAttempts; attempt++ {
+		er, eErr := cli.EnterOnlineLobbyRoom(roomID, p.Password)
+		if eErr != nil {
+			return result, fmt.Errorf("TanLobbyLogin: EnterOnlineLobbyRoom: %w", eErr)
+		}
+		if er.Code == 0 {
+			enterOK = true
+			break
+		}
+		lastEnterMsg = er.Message
+		lastEnterCode = er.Code
+		// 501 = 需购买：先购买再重试
+		if er.Code == 501 {
+			if attempt < maxEnterAttempts && resID != "" {
+				_, _ = cli.PurchaseItem(resID)
+				time.Sleep(3 * time.Second)
+				continue
+			}
+			break
+		}
+		// 12022 = 快速匹配过于频繁：等一会儿再试一次，避免把限流越滚越大
+		if er.Code == 12022 {
+			if attempt < maxEnterAttempts {
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			break
+		}
+		// 其他错误：直接退出，不再重试
+		break
+	}
+	if !enterOK {
+		return result, fmt.Errorf("TanLobbyLogin: 进入房间失败: %s(code=%d)", lastEnterMsg, lastEnterCode)
+	}
+
+	// 3. 获取游戏服务器地址
+	gameEnter, err := cli.OnlineLobbyGameEnter()
+	if err != nil {
+		return result, fmt.Errorf("TanLobbyLogin: OnlineLobbyGameEnter: %w", err)
+	}
+	if gameEnter.Code != 0 {
+		return result, fmt.Errorf("TanLobbyLogin: OnlineLobbyGameEnter: %s(code=%d)", gameEnter.Message, gameEnter.Code)
+	}
+	gameAddr := gameEnter.Entity.BestAddr()
+
+	// 4. 组装加密材料
+	encryptedToken := utils.GetEncryptedToken(cli.UserToken)
+	raknetRand := make([]byte, 16)
+	if _, err = cryptoRand.Read(raknetRand); err != nil {
+		return result, fmt.Errorf("TanLobbyLogin: rand read: %w", err)
+	}
+	raknetAESRand, err := utils.AesECBEncrypt(raknetRand, encryptedToken)
+	if err != nil {
+		return result, fmt.Errorf("TanLobbyLogin: aes encrypt: %w", err)
+	}
+	encryptKeyBytes := append(append(make([]byte, 0, len(encryptedToken)+len(raknetRand)), encryptedToken...), raknetRand...)
+	decryptKeyBytes := append(append(make([]byte, 0, len(encryptedToken)+len(raknetRand)), raknetRand...), encryptedToken...)
+
+	seed := make([]byte, 16)
+	if _, err = cryptoRand.Read(seed); err != nil {
+		return result, fmt.Errorf("TanLobbyLogin: rand read: %w", err)
+	}
+	ticket, err := utils.AesECBEncrypt(seed, []byte(cli.UserToken))
+	if err != nil {
+		return result, fmt.Errorf("TanLobbyLogin: aes encrypt: %w", err)
+	}
+
+	result.RoomOwnerID = uint32(room.OwnerID.Int64())
+	if cli.UserDetail != nil {
+		result.UserPlayerName = cli.UserDetail.Name
+		result.BotLevel = int(cli.UserDetail.Level.Int64())
+	}
+	userUniqueID, err := strconv.ParseInt(cli.UserID, 10, 64)
+	if err != nil {
+		return result, fmt.Errorf("TanLobbyLogin: parse int: %w", err)
+	}
+	result.UserUniqueID = uint32(userUniqueID)
+
+	result.RaknetServerAddress = gameAddr
+	result.SignalingServerAddress = gameAddr
+	result.RaknetRand = raknetRand
+	result.RaknetAESRand = raknetAESRand
+	result.SignalingSeed = seed
+	result.SignalingTicket = ticket
+	result.EncryptKeyBytes = encryptKeyBytes
+	result.DecryptKeyBytes = decryptKeyBytes
+
+	return result, nil
+}

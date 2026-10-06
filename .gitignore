@@ -1,0 +1,15 @@
+# 二进制
+rin-server
+funauth-bin*
+*.exe
+# 日志
+*.log
+# 本地环境
+.env
+# 构建产物
+bin/
+dist/
+# IDE
+.idea/
+.vscode/
+.DS_Store
