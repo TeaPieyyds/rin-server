@@ -5,9 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/Yeah114/FunAuth/cmd/funauth/internal/handlers"
+	"github.com/gin-gonic/gin"
 )
 
 func NewRouter() *gin.Engine {
@@ -20,9 +19,12 @@ func NewRouter() *gin.Engine {
 	r.Use(gin.Logger(), gin.Recovery())
 	_ = r.SetTrustedProxies([]string{"127.0.0.1"})
 
+	// 首页：换 Cookie 前端页面
+	r.GET("/", handlers.HandleIndexPage)
+
+	// API：账号密码 -> Cookie
 	api := r.Group("/api")
-	handlers.RegisterNewRoutes(api)
-	handlers.RegisterPhoenixRoutes(api)
+	handlers.RegisterGetCookieRoute(api)
 
 	return r
 }
