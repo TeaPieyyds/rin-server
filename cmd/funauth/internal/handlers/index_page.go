@@ -1,0 +1,245 @@
+package handlers
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+const indexHTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>rin-server · 账号换 Cookie</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1419;
+    color: #e6e6e6;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #1a2028;
+    border: 1px solid #2a3442;
+    border-radius: 16px;
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  h1 {
+    font-size: 21px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .sub {
+    font-size: 13px;
+    color: #7a8798;
+    margin-bottom: 26px;
+    line-height: 1.5;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    color: #9aa8b8;
+    margin-bottom: 7px;
+    font-weight: 500;
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    background: #12181f;
+    border: 1px solid #2a3442;
+    border-radius: 10px;
+    color: #e6e6e6;
+    font-size: 14px;
+    margin-bottom: 18px;
+    transition: border-color .15s;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: none;
+    border-color: #4a9eff;
+  }
+  input::placeholder { color: #4a5568; }
+  button {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, #4a9eff, #3a7bd5);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    font-family: inherit;
+  }
+  button:hover:not(:disabled) { opacity: .9; }
+  button:active:not(:disabled) { transform: scale(.99); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .result {
+    margin-top: 22px;
+    padding: 15px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    display: none;
+  }
+  .result.show { display: block; }
+  .result.ok {
+    background: rgba(46, 160, 88, .12);
+    border: 1px solid rgba(46, 160, 88, .35);
+    color: #7ddc9e;
+  }
+  .result.err {
+    background: rgba(220, 62, 62, .12);
+    border: 1px solid rgba(220, 62, 62, .35);
+    color: #ff8a8a;
+  }
+  .cookie-box {
+    margin-top: 14px;
+    background: #0d1218;
+    border: 1px solid #2a3442;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    color: #8fa8c8;
+    word-break: break-all;
+    max-height: 180px;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+  .copy-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+    background: #232c38;
+    border: 1px solid #34425a;
+    border-radius: 8px;
+    color: #9ab4d8;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .15s;
+  }
+  .copy-btn:hover { background: #2a3442; }
+  .footer {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid #232c38;
+    font-size: 11px;
+    color: #4a5568;
+    text-align: center;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>账号 → Cookie</h1>
+  <p class="sub">输入网易通行证账号密码，获取登录 Cookie。</p>
+
+  <label for="username">账号（邮箱）</label>
+  <input id="username" type="text" placeholder="example@163.com" autocomplete="username">
+
+  <label for="password">密码</label>
+  <input id="password" type="password" placeholder="请输入密码" autocomplete="current-password">
+
+  <label for="apiKey">密钥（如服务端已启用）</label>
+  <input id="apiKey" type="password" placeholder="留空则跳过校验">
+
+  <button id="btn" onclick="doExchange()">获取 Cookie</button>
+
+  <div id="result" class="result"></div>
+
+  <div class="footer">
+    rin-server · 基于 FunAuth<br>
+    Cookie 仅存储于本地浏览会话，不会上传至其他服务
+  </div>
+</div>
+
+<script>
+async function doExchange() {
+  const btn = document.getElementById('btn');
+  const res = document.getExlementById('result');
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const apiKey = document.getElementById('apiKey').value.trim();
+
+  if (!username || !password) {
+    res.className = 'result err show';
+    res.textContent = '获取易通过校�,';    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '获取中...';
+  res.className = 'result';
+  res.innerHTML = '';
+
+  try {
+    const resp = await fetch('/api/get_cookie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, api_key: apiKey })
+    });
+    const data = await resp.json();
+
+    if (data.success && data.cookie) {
+      res.className = 'result ok show';
+      res.innerHTML = '<div>✓ 获取成功</div>' +
+        '<div class="cookie-box" id="cookieBox"></div>' +
+        '<button class="copy-btn" onclick="copyCookie()">复制 Cookie</button>';
+      document.getElementById('cookieBox').textContent = data.cookie;
+      window.__cookie = data.cookie;
+    } else {
+      res.className = 'result err show';
+      res.textContent = '✗ ' + (data.message || '未知错误');
+    }
+  } catch (e) {
+    res.className = 'result err show';
+    res.textContent = '✗ 请求失败：' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '获取 Cookie';
+  }
+}
+
+function copyCookie() {
+  if (!window.__cookie) return;
+  navigator.clipboard.writeText(window.__cookie).then(() => {
+    const b = document.querySelector('.copy-btn');
+    if (b) { b.textContent = '生 已复制'; setTimeout(() => b.textContent = '复制 Cookie', 1500); }
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = window.__cookie;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const b = document.querySelector('.copy-btn');
+    if (b) { b.textContent = '生 ䷲复制'; setTimeout(() => b.textContent = '复制 Cookie', 1500); }
+  });
+}
+
+// 回车提交
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doExchange();
+});
+</script>
+</body>
+</html>`
+
+// HandleIndexPage 渲染换 Cookie 前端页面
+func HandleIndexPage(c *gin.Context) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, indexHTML)
+}
