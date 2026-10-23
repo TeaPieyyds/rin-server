@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const indexHTML = ` + "`" + `<!DOCTYPE html>
+const indexHTML = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -237,7 +237,7 @@ document.addEventListener('keydown', e => {
 });
 </script>
 </body>
-</html>` + "`" + `
+</html>`
 
 // HandleIndexPage 渲染换 Cookie 前端页面
 func HandleIndexPage(c *gin.Context) {
