@@ -1,30 +1,38 @@
 # rin-server
 
-基于 [FunAuth](https://github.com/Yeah114/FunAuth) 的网易《我的世界》认证服务。
+网易《我的世界》账号密码 → Cookie 转换服务。
+
+基于 [FunAuth](https://github.com/Yeah114/FunAuth) 精简而来，**只保留换 Cookie 一个功能**。
 
 ## 功能
 
-- 账号密码换 Cookie (`POST /api/get_cookie`)
-- 完整的 Phoenix 登录 / 联机大厅（Tan Lobby）服务
+- 浏览器打开网页，输入网易通行证账号密码，直接拿到登录 Cookie
+- 提供 REST API：`POST /api/get_cookie`
 
-## 主要接口
+## 使用
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/get_cookie` | 账号密码 → 网易 Cookie |
-| POST | `/api/phoenix/login` | 完整登录（账号密码或 FBToken）|
-| POST | `/api/phoenix/tan_lobby_login` | 联机大厅登录 |
+### 网页版
 
-### `POST /api/get_cookie`
+启动服务后，浏览器访问 `http://<你的地址>:8080/`，填写账号密码即可。
 
-请求：
-```json
-{ "username": "账号", "password": "密码", "api_key": "密钥" }
+### API
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/get_cookie \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"账号@163.com","password":"密码","api_key":"密钥"}'
 ```
 
 响应：
+
 ```json
-{ "success": true, "message": "ok", "cookie": "..." }
+{ "success": true, "message": "ok", "cookie": "{\"sauth_json\":...}" }
+```
+
+失败时：
+
+```json
+{ "success": false, "message": "登录失败: ..." }
 ```
 
 ## 环境变量
@@ -32,9 +40,7 @@
 | 变量 | 说明 |
 |---|---|
 | `FUNAUTH_ADDR` | 监听地址，默认 `:8080` |
-| `FUNAUTH_COOKIE_KEY` | `get_cookie` 接口密钥；为空时不校验 |
-| `FUNAUTH_PROXY_API_URL` | 代理池 HTTP API（可选，用于换 IP 规避限流）|
-| `HTTPS_PROXY` / `HTTP_PROXY` | 标准代理环境变量（可选）|
+| `FUNAUTH_COOKIE_KEY` | `/api/get_cookie` 接口密钥；为空时不校验（**公网部署务必设置**） |
 
 ## 构建
 
@@ -45,5 +51,12 @@ go build -o rin-server ./cmd/funauth
 ## 运行
 
 ```bash
+# 建议设置密钥
 FUNAUTH_COOKIE_KEY=your-secret ./rin-server
 ```
+
+## 注意
+
+- Cookie 等同登录凭证，请勿泄露
+- 服务端不存储任何账号密码
+- 请遵守网易用户协议，仅用于个人学习研究
