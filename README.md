@@ -4,6 +4,11 @@
 
 基于 [FunAuth](https://github.com/Yeah114/FunAuth) 精简而来，**只保留换 Cookie 一个功能**。
 
+## 在线网页
+
+- 页面：https://teapieyyds.github.io/rin-server
+- 接口：https://rin-server.orkestr.run/api/get_cookie
+
 ## 功能
 
 - 浏览器打开网页，输入网易通行证账号密码，直接拿到登录 Cookie
@@ -13,20 +18,18 @@
 
 ### 网页版
 
-启动服务后，浏览器访问 `http://<你的地址>:8080/`，填写账号密码即可。
+打开在线页面，填写账号密码即可。
 
 ### API
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/get_cookie \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"账号@163.com","password":"密码","api_key":"密钥"}'
+curl -X POST https://rin-server.orkestr.run/api/get_cookie   -H 'Content-Type: application/json'   -d '{"username":"账号@163.com","password":"密码","api_key":"密钥"}'
 ```
 
 响应：
 
 ```json
-{ "success": true, "message": "ok", "cookie": "{\"sauth_json\":...}" }
+{ "success": true, "message": "ok", "cookie": "{"sauth_json":...}" }
 ```
 
 失败时：
@@ -57,6 +60,8 @@ FUNAUTH_COOKIE_KEY=your-secret ./rin-server
 
 ## 注意
 
+- 在线页面为静态托管；真正的换 Cookie 接口运行在 Orkestr
+- GitHub Actions 不能替代常驻服务，只能做构建/测试/发布静态资源
 - Cookie 等同登录凭证，请勿泄露
 - 服务端不存储任何账号密码
 - 请遵守网易用户协议，仅用于个人学习研究
