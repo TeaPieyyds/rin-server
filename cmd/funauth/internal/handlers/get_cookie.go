@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -26,8 +25,11 @@ type GetCookieResponse struct {
 	Cookie  string `json:"cookie,omitempty"`
 }
 
+// defaultCookieKey 固定的接口密钥，不可通过环境变量覆盖
+const defaultCookieKey = "rin_k0BtF3xU2kk742RW5gEZhDkFFvRBAI7r"
+
 func getCookieAuthKey() string {
-	return strings.TrimSpace(os.Getenv("FUNAUTH_COOKIE_KEY"))
+	return defaultCookieKey
 }
 
 var (
