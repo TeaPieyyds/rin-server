@@ -6,7 +6,7 @@
 
 ## 在线网页
 
-- 页面：https://teapieyyds.github.io/rin-server
+- 页面：https://teapieyyds.github.io/rin-server/
 - 接口：https://rin-server.orkestr.run/api/get_cookie
 
 ## 功能
@@ -57,6 +57,11 @@ go build -o rin-server ./cmd/funauth
 # 建议设置密钥
 FUNAUTH_COOKIE_KEY=your-secret ./rin-server
 ```
+
+## 关于 GitHub Actions
+
+- GitHub Actions 只能做构建、测试、发布静态资源，不能替代常驻服务。
+- 在线主页放 GitHub Pages；Cookie API 放 Orkestr。
 
 ## 注意
 
