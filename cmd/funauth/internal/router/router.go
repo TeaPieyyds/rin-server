@@ -19,9 +19,6 @@ func NewRouter() *gin.Engine {
 	r.Use(gin.Logger(), gin.Recovery())
 	_ = r.SetTrustedProxies([]string{"127.0.0.1"})
 
-	// 首页：换 Cookie 前端页面
-	r.GET("/", handlers.HandleIndexPage)
-
 	// API：账号密码 -> Cookie
 	api := r.Group("/api")
 	handlers.RegisterGetCookieRoute(api)
