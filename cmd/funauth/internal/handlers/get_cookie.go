@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Yeah114/g79client/account/mpay"
 	"github.com/gin-gonic/gin"
@@ -28,9 +30,56 @@ func getCookieAuthKey() string {
 	return strings.TrimSpace(os.Getenv("FUNAUTH_COOKIE_KEY"))
 }
 
+var (
+	getCookieRateMu     sync.Mutex
+	getCookieRateBuckets = map[string][]time.Time{}
+	getCookieRateLimit   = 12
+	getCookieRateWindow  = time.Minute
+)
+
+func clientKeyForRate(c *gin.Context) string {
+	if ip := c.ClientIP(); ip != "" {
+		return ip
+	}
+	if c.Request != nil && c.Request.RemoteAddr != "" {
+		return c.Request.RemoteAddr
+	}
+	return "unknown"
+}
+
+func allowGetCookieRate(c *gin.Context) bool {
+	key := clientKeyForRate(c)
+	now := time.Now()
+
+	getCookieRateMu.Lock()
+	defer getCookieRateMu.Unlock()
+
+	slice := getCookieRateBuckets[key]
+	kept := make([]time.Time, 0, len(slice)+1)
+	for _, ts := range slice {
+		if now.Sub(ts) < getCookieRateWindow {
+			kept = append(kept, ts)
+		}
+	}
+
+	if len(kept) >= getCookieRateLimit {
+		getCookieRateBuckets[key] = kept
+		return false
+	}
+
+	kept = append(kept, now)
+	getCookieRateBuckets[key] = kept
+	return true
+}
+
 // RegisterGetCookieRoute 注册账号密码 -> Cookie 接口
 func RegisterGetCookieRoute(api *gin.RouterGroup) {
 	api.POST("/get_cookie", func(c *gin.Context) {
+		if !allowGetCookieRate(c) {
+			c.JSON(http.StatusTooManyRequests, GetCookieResponse{Success: false, Message: "请求过于频繁，请稍后再试"})
+			return
+		}
+
 		var req GetCookieRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusOK, GetCookieResponse{Success: false, Message: fmt.Sprintf("请求格式错误: %v", err)})
