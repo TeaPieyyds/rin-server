@@ -23,9 +23,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .result.show{display:block}
 .result.ok{background:rgba(46,160,88,.12);border:1px solid rgba(46,160,88,.35);color:#7ddc9e}
 .result.err{background:rgba(220,62,62,.12);border:1px solid rgba(220,62,62,.35);color:#ff8a8a}
+.result.warn{background:rgba(230,160,40,.12);border:1px solid rgba(230,160,40,.35);color:#ffd07a}
 .cookie-box{margin-top:12px;background:#0d1218;border:1px solid #2a3442;border-radius:8px;padding:12px;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:11px;color:#8fa8c8;word-break:break-all;max-height:180px;overflow:auto;line-height:1.5}
 .copy-btn{margin-top:10px;width:100%;padding:10px;background:#232c38;border:1px solid #34425a;border-radius:8px;color:#9ab4d8;font-size:13px;cursor:pointer;font-family:inherit}
 .copy-btn:hover{background:#2a3442}
+.verify-btn{margin-top:12px;width:100%;padding:10px;background:#4a9eff;border:none;border-radius:8px;color:#fff;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;}
+.verify-btn:hover{background:#3a8ee5}
 .footer{margin-top:24px;padding-top:18px;border-top:1px solid #232c38;font-size:11px;color:#4a5568;text-align:center;line-height:1.6}
 </style>
 </head>
@@ -89,6 +92,20 @@ async function doExchange() {
         '<button class="copy-btn" onclick="copyCookie()">复制 Cookie</button>';
       document.getElementById('cookieBox').textContent = data.cookie;
       window.__cookie = data.cookie;
+    } else if (data.need_verify) {
+      // 拦截需要验证的情况
+      res.className = 'result warn show';
+      res.innerHTML = `
+        <div>⚠️ 需要安全验证</div>
+        <div style="margin-top:8px;font-size:12px;color:#c4a875;line-height:1.5;">
+          ${data.message || '账号存在安全风险'}<br>
+          请点击下方按钮完成短信验证。<br>
+          <b>验证完成后，请务必回到这里再次点击“获取 Cookie”。</b>
+        </div>
+        <button class="verify-btn" onclick="window.open('${data.verify_url}', '_blank')">
+          打开验证页面
+        </button>
+      `;
     } else {
       res.className = 'result err show';
       res.textContent = '✗ ' + (data.message || '未知错误');
