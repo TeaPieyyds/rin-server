@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,9 +21,11 @@ type GetCookieRequest struct {
 
 // GetCookieResponse 换 Cookie 响应
 type GetCookieResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Cookie  string `json:"cookie,omitempty"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	Cookie     string `json:"cookie,omitempty"`
+	NeedVerify bool   `json:"need_verify,omitempty"` // 新增：是否需要安全验证
+	VerifyURL  string `json:"verify_url,omitempty"`  // 新增：验证链接
 }
 
 // defaultCookieKey 固定的接口密钥，不可通过环境变量覆盖
@@ -33,7 +36,7 @@ func getCookieAuthKey() string {
 }
 
 var (
-	getCookieRateMu     sync.Mutex
+	getCookieRateMu      sync.Mutex
 	getCookieRateBuckets = map[string][]time.Time{}
 	getCookieRateLimit   = 12
 	getCookieRateWindow  = time.Minute
@@ -105,18 +108,43 @@ func RegisterGetCookieRoute(api *gin.RouterGroup) {
 			return
 		}
 
+		// 1. 生成设备信息
 		dev, derr := mpay.GenerateDevice(c.Request.Context())
 		if derr != nil {
+			// 拦截生成设备时的风控验证
+			var verifyErr *mpay.NeedVerifyError
+			if errors.As(derr, &verifyErr) {
+				c.JSON(http.StatusOK, GetCookieResponse{
+					Success:    false,
+					Message:    "生成设备需要安全验证: " + verifyErr.Reason,
+					NeedVerify: true,
+					VerifyURL:  verifyErr.VerifyURL,
+				})
+				return
+			}
 			c.JSON(http.StatusOK, GetCookieResponse{Success: false, Message: fmt.Sprintf("生成设备信息失败: %v", derr)})
 			return
 		}
 
+		// 2. 登录账号
 		usr, lerr := dev.LoginEmail(c.Request.Context(), req.Username, req.Password)
 		if lerr != nil {
+			// 拦截登录时的风控验证
+			var verifyErr *mpay.NeedVerifyError
+			if errors.As(lerr, &verifyErr) {
+				c.JSON(http.StatusOK, GetCookieResponse{
+					Success:    false,
+					Message:    "登录需要安全验证: " + verifyErr.Reason,
+					NeedVerify: true,
+					VerifyURL:  verifyErr.VerifyURL,
+				})
+				return
+			}
 			c.JSON(http.StatusOK, GetCookieResponse{Success: false, Message: fmt.Sprintf("登录失败: %v", lerr)})
 			return
 		}
 
+		// 3. 获取 Cookie
 		ck, cerr := usr.CookieString()
 		if cerr != nil {
 			c.JSON(http.StatusOK, GetCookieResponse{Success: false, Message: fmt.Sprintf("生成 Cookie 失败: %v", cerr)})
